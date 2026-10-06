@@ -16,6 +16,10 @@ interface ColumnRowProps {
   hasTargetHandle: boolean;
 }
 
+// Match the declared family, never a substring inside enum literals or names such as point.
+const NUMERIC_TYPE =
+  /^\s*(?:(?:tiny|small|medium|big)int|u?int(?:eger|\d+)?|decimal\d*|numeric|float\d*|double|real|number)(?=$|[\s(])/i;
+
 const ColumnRow = memo(function ColumnRow({ column, isFk, hasSourceHandle, hasTargetHandle }: ColumnRowProps) {
   const tooltip = [
     `${column.name}: ${column.type}`,
@@ -60,10 +64,7 @@ const ColumnRow = memo(function ColumnRow({ column, isFk, hasSourceHandle, hasTa
           <Key strokeWidth={1.5} className="w-2.5 h-2.5 text-hue-yellow" />
         ) : isFk ? (
           <Link2 strokeWidth={1.5} className="w-2.5 h-2.5 text-hue-blue" />
-        ) : // The FAMILY, where the provider reports one beside the declaration (#1033): MySQL
-        // and MariaDB report `enum('int','text')` in `type`, which contains the four
-        // characters this test looks for and is not an integer.
-        (column.baseType ?? column.type).toLowerCase().includes("int") ? (
+        ) : NUMERIC_TYPE.test(column.baseType ?? column.type) ? (
           <Hash strokeWidth={1.5} className="w-2.5 h-2.5 text-fg-muted" />
         ) : (
           <Type strokeWidth={1.5} className="w-2.5 h-2.5 text-fg-muted" />
@@ -78,7 +79,7 @@ const ColumnRow = memo(function ColumnRow({ column, isFk, hasSourceHandle, hasTa
       </div>
       <div className="flex items-center gap-1">
         {column.nullable === false && <span className="text-[0.5rem] text-hue-red/60">NN</span>}
-        <span className="text-[0.625rem] text-fg-subtle font-mono uppercase">{column.type}</span>
+        <span className="text-[0.625rem] text-fg-subtle font-mono">{column.type}</span>
       </div>
     </div>
   );
@@ -110,7 +111,7 @@ export const TableNode = memo(function TableNode({ id, data }: NodeProps<TableFl
 
   return (
     <div
-      className={`bg-raised border rounded-lg overflow-hidden min-w-[200px] shadow-2xl transition-all ${
+      className={`bg-raised border rounded-lg overflow-hidden min-w-[200px] shadow-2xl transition-all ${table.kind !== "table" ? "border-dashed" : ""} ${
         highlighted ? "border-brand-tint/60 ring-1 ring-brand-tint/30" : "border-hairline-strong"
       }`}
     >
@@ -136,6 +137,9 @@ export const TableNode = memo(function TableNode({ id, data }: NodeProps<TableFl
         <span className="text-xs font-medium text-fg" title={objectPathLabel(table.path)}>
           {table.name}
         </span>
+        {table.kind !== "table" && (
+          <span className="text-[0.625rem] text-fg-secondary border border-hairline rounded px-1">{table.kind}</span>
+        )}
         <span className="text-[0.625rem] text-fg-subtle ml-auto">{table.columns?.length || 0} cols</span>
       </div>
       {!compact && (
