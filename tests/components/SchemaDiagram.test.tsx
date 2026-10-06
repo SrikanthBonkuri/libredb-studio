@@ -932,6 +932,58 @@ describe("SchemaDiagram", () => {
   // ═══════════════════════════════════════════════════════════════════════
 
   describe("TableNode rendering", () => {
+    test("preserves declared type casing and classifies numeric families without reading enum literals", () => {
+      const types = [
+        "enum('new','paid')",
+        "decimal(10,2)",
+        "float",
+        "double",
+        "numeric",
+        "real",
+        "number",
+        "int unsigned",
+        "bigint",
+        "UInt64",
+        "Float64",
+        "Decimal128(2)",
+        "enum('int','text')",
+        "point",
+      ];
+      for (const type of types) {
+        const schema: DetailedObject[] = [
+          {
+            name: "probe",
+            kind: "table",
+            path: ["probe"],
+            indexes: [],
+            foreignKeys: [],
+            columns: [{ name: "value", type, nullable: true, isPrimary: false }],
+          },
+        ];
+        const { container, unmount } = render(<SchemaDiagram {...createDefaultProps({ schema })} />);
+        const row = container.querySelector('[title^="value: "]')!;
+        const text = row.querySelector(".font-mono")!;
+        expect(text.textContent).toBe(type);
+        expect(text.classList.contains("uppercase")).toBe(false);
+        const numeric = !type.startsWith("enum") && type !== "point";
+        expect(row.querySelector(numeric ? ".lucide-hash" : ".lucide-type")).not.toBeNull();
+        unmount();
+      }
+    });
+
+    test("marks non-table relation kinds in both detailed and compact nodes", () => {
+      for (const kind of ["table", "view", "materialized-view"]) {
+        const schema = singleTableFixture.map((table) => ({ ...table, kind }));
+        const { container, unmount } = render(<SchemaDiagram {...createDefaultProps({ schema })} />);
+        const node = container.querySelector('[data-node-id="settings"]')!;
+        expect(within(node as HTMLElement).queryByText(kind) !== null).toBe(kind !== "table");
+        expect(node.querySelector(".border-dashed") !== null).toBe(kind !== "table");
+        fireEvent.click(within(container).getByText("Compact").closest("button")!);
+        expect(within(node as HTMLElement).queryByText(kind) !== null).toBe(kind !== "table");
+        unmount();
+      }
+    });
+
     test("renders table name in header", () => {
       const props = createDefaultProps();
       const { container } = render(<SchemaDiagram {...props} />);
@@ -967,7 +1019,7 @@ describe("SchemaDiagram", () => {
       const props = createDefaultProps({ schema: singleTableFixture });
       const { container } = render(<SchemaDiagram {...props} />);
 
-      // Column types should be rendered in uppercase
+      // Column types retain the spelling reported by the provider.
       const texts = Array.from(container.querySelectorAll(".font-mono"));
       const typeTexts = texts.map((el) => el.textContent);
       expect(typeTexts).toContain("text");
