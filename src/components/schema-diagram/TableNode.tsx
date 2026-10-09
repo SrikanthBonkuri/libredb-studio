@@ -5,6 +5,7 @@ import { Handle, Position, useUpdateNodeInternals, type NodeProps } from "@xyflo
 import { Database, Hash, Key, Link2, Type } from "lucide-react";
 import { objectPathLabel } from "@/lib/db/object-path";
 import type { ColumnSchema } from "@/lib/types";
+import { isNumericType } from "../results-grid/numeric-sort";
 import { TABLE_SOURCE_HANDLE, TABLE_TARGET_HANDLE, type TableFlowNode } from "./graph";
 import { useDiagramActions } from "./diagram-context";
 import { useTableHighlighted } from "./highlight-store";
@@ -15,10 +16,6 @@ interface ColumnRowProps {
   hasSourceHandle: boolean;
   hasTargetHandle: boolean;
 }
-
-// Match the declared family, never a substring inside enum literals or names such as point.
-const NUMERIC_TYPE =
-  /^\s*(?:(?:tiny|small|medium|big)int|u?int(?:eger|\d+)?|decimal\d*|numeric|float\d*|double|real|number)(?=$|[\s(])/i;
 
 const ColumnRow = memo(function ColumnRow({ column, isFk, hasSourceHandle, hasTargetHandle }: ColumnRowProps) {
   const tooltip = [
@@ -64,7 +61,7 @@ const ColumnRow = memo(function ColumnRow({ column, isFk, hasSourceHandle, hasTa
           <Key strokeWidth={1.5} className="w-2.5 h-2.5 text-hue-yellow" />
         ) : isFk ? (
           <Link2 strokeWidth={1.5} className="w-2.5 h-2.5 text-hue-blue" />
-        ) : NUMERIC_TYPE.test(column.baseType ?? column.type) ? (
+        ) : isNumericType(column.baseType ?? column.type) ? (
           <Hash strokeWidth={1.5} className="w-2.5 h-2.5 text-fg-muted" />
         ) : (
           <Type strokeWidth={1.5} className="w-2.5 h-2.5 text-fg-muted" />
@@ -89,7 +86,7 @@ export const TableNode = memo(function TableNode({ id, data }: NodeProps<TableFl
   const highlighted = useTableHighlighted(id);
   const { toggleExpand } = useDiagramActions();
   const updateNodeInternals = useUpdateNodeInternals();
-  const { table, compact, visibleColumns, hiddenCount, sourceAnchors, targetAnchors } = data;
+  const { table, kindLabel, compact, visibleColumns, hiddenCount, sourceAnchors, targetAnchors } = data;
 
   // The rendered handle set changes with compact mode, column visibility and
   // FK anchors (which arrive asynchronously via the second-phase relations
@@ -111,7 +108,7 @@ export const TableNode = memo(function TableNode({ id, data }: NodeProps<TableFl
 
   return (
     <div
-      className={`bg-raised border rounded-lg overflow-hidden min-w-[200px] shadow-2xl transition-all ${table.kind !== "table" ? "border-dashed" : ""} ${
+      className={`bg-raised border rounded-lg overflow-hidden min-w-[200px] shadow-2xl transition-all ${
         highlighted ? "border-brand-tint/60 ring-1 ring-brand-tint/30" : "border-hairline-strong"
       }`}
     >
@@ -137,8 +134,8 @@ export const TableNode = memo(function TableNode({ id, data }: NodeProps<TableFl
         <span className="text-xs font-medium text-fg" title={objectPathLabel(table.path)}>
           {table.name}
         </span>
-        {table.kind !== "table" && (
-          <span className="text-[0.625rem] text-fg-secondary border border-hairline rounded px-1">{table.kind}</span>
+        {kindLabel && (
+          <span className="text-[0.625rem] text-fg-secondary border border-hairline rounded px-1">{kindLabel}</span>
         )}
         <span className="text-[0.625rem] text-fg-subtle ml-auto">{table.columns?.length || 0} cols</span>
       </div>
