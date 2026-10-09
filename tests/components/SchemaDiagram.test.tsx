@@ -946,6 +946,10 @@ describe("SchemaDiagram", () => {
         "UInt64",
         "Float64",
         "Decimal128(2)",
+        "Nullable(Int32)",
+        "HUGEINT",
+        "UBIGINT",
+        "varint",
         "enum('int','text')",
         "point",
       ];
@@ -971,17 +975,17 @@ describe("SchemaDiagram", () => {
       }
     });
 
-    test("marks non-table relation kinds in both detailed and compact nodes", () => {
-      for (const kind of ["table", "view", "materialized-view"]) {
-        const schema = singleTableFixture.map((table) => ({ ...table, kind }));
-        const { container, unmount } = render(<SchemaDiagram {...createDefaultProps({ schema })} />);
-        const node = container.querySelector('[data-node-id="settings"]')!;
-        expect(within(node as HTMLElement).queryByText(kind) !== null).toBe(kind !== "table");
-        expect(node.querySelector(".border-dashed") !== null).toBe(kind !== "table");
-        fireEvent.click(within(container).getByText("Compact").closest("button")!);
-        expect(within(node as HTMLElement).queryByText(kind) !== null).toBe(kind !== "table");
-        unmount();
-      }
+    test("uses the MySQL base type for numeric icons while preserving the declared type", () => {
+      const schema = singleTableFixture.map((table) => ({
+        ...table,
+        columns: [
+          { name: "amount", type: "decimal(10,2) unsigned", baseType: "decimal", nullable: true, isPrimary: false },
+        ],
+      }));
+      const { container } = render(<SchemaDiagram {...createDefaultProps({ schema })} />);
+      const row = container.querySelector('[title^="amount: "]')!;
+      expect(row.querySelector(".lucide-hash")).not.toBeNull();
+      expect(row.querySelector(".font-mono")!.textContent).toBe("decimal(10,2) unsigned");
     });
 
     test("renders table name in header", () => {
@@ -2156,6 +2160,64 @@ describe("SchemaDiagram kind filtering", () => {
     );
 
     expect(container.querySelector('[data-testid="mock-react-flow"]')).toBeNull();
+  });
+
+  test("badges every node in a mixed-kind diagram with declared labels, including compact mode", () => {
+    for (const [kind, label] of [
+      ["view", "View"],
+      ["materialized_view", "Materialized View"],
+    ]) {
+      const declared = {
+        ...capabilities,
+        objectKinds: [
+          ...capabilities.objectKinds!,
+          {
+            id: "materialized_view",
+            role: "relation" as const,
+            label: "Materialized View",
+            labelPlural: "Materialized Views",
+          },
+        ],
+      };
+      const schema = [inventory[0], { ...inventory[1], kind }];
+      const { container, unmount } = render(
+        <SchemaDiagram schema={schema} capabilities={declared} onClose={() => {}} />,
+      );
+      for (const compact of [false, true]) {
+        if (compact) fireEvent.click(within(container).getByText("Compact").closest("button")!);
+        const table = container.querySelector('[data-node-id="orders"]')!;
+        const view = container.querySelector('[data-node-id="order_summary"]')!;
+        expect(within(table as HTMLElement).queryByText("Table")).not.toBeNull();
+        expect(within(view as HTMLElement).queryByText(label)).not.toBeNull();
+        expect(within(view as HTMLElement).queryByText(kind)).toBeNull();
+        expect(container.querySelector(".border-dashed")).toBeNull();
+      }
+      unmount();
+    }
+  });
+
+  test("a MongoDB diagram containing only collections has no kind badges or dashed borders", () => {
+    const declared = {
+      ...capabilities,
+      objectKinds: [{ id: "collection", role: "relation" as const, label: "Collection", labelPlural: "Collections" }],
+    };
+    const schema = inventory.slice(0, 2).map((object) => ({ ...object, kind: "collection" }));
+    const { container } = render(<SchemaDiagram schema={schema} capabilities={declared} onClose={() => {}} />);
+    expect(container.querySelectorAll("[data-node-id]").length).toBe(2);
+    expect(within(container).queryByText("Collection")).toBeNull();
+    expect(within(container).queryByText("collection")).toBeNull();
+    expect(container.querySelector(".border-dashed")).toBeNull();
+  });
+
+  test("filtering a mixed diagram to one relation kind removes its badges", async () => {
+    const { container } = render(<SchemaDiagram schema={inventory} capabilities={capabilities} onClose={() => {}} />);
+    expect(within(container).queryByText("Table")).not.toBeNull();
+    fireEvent.change(within(container).getByPlaceholderText("Filter tables..."), { target: { value: "orders" } });
+    await waitFor(() => {
+      expect(container.querySelector('[data-node-id="order_summary"]')).toBeNull();
+      expect(container.querySelector('[data-node-id="orders"]')).not.toBeNull();
+      expect(within(container).queryByText("Table")).toBeNull();
+    });
   });
 
   test("the header counts each relation kind under its own name (#1466)", () => {
